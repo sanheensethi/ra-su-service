@@ -1,10 +1,12 @@
 // It should return an object that matches the database schema for user
-export function dbCreateInvitationFactory(data: any) {
-    let { email, type, invite_code, super_admin_id, base_price_up } = data;
+import tokenService from "../../utils/tokens";
+
+export function dbCreateCompanyOwnerInvitationFactory(data: any) {
+    let { email, type, super_admin_id, base_price_up } = data;
     
     return {
         email: email,
-        invite_code: invite_code,
+        invite_code: tokenService.generateRandomToken(16),
         invitation_type: type,
         invited_by: super_admin_id,
         role_in_company: "ADMIN",

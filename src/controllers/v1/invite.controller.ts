@@ -1,66 +1,84 @@
-import express, { Request, Response } from 'express';
-import logger from '../../logger/v1/logger';
-import InviteService from '../../services/v1/invite.service';
+import express, { Request, Response, Router } from "express";
+import logger from "../../logger/v1/logger";
+import InviteService from "../../services/v1/invite.service";
+import { validateInvitationTypeInputs } from "../../utils/helpers";
 
 class InviteController {
     private inviteService: InviteService;
-    private router = express.Router();
+    private router: Router;
+
     constructor() {
-        this.initializeRoutes();
+        this.router = express.Router();
         this.inviteService = InviteService.getInstance();
+        this.initializeRoutes();
     }
 
-    private initializeRoutes() {
-        this.router.post('/invite/create', this.createInvite.bind(this));
+    private initializeRoutes(): void {
+        this.router.post("/invite/create", this.createInvite.bind(this));
     }
 
-    async createInvite(req: Request, res: Response) {
-        // TODO: get super_admin_id from req.user after auth middleware is implemented
-        const super_admin_id = 1;
-        // const super_admin_id = req.user?.id; 
-        // type - PLATFORM, COMPANY_MEMBER, COMPANY_OWNER
-        const { email, type, base_price_up } = req.body;
-        if (!email || !type) {
-            return res.status(400).json({ message: "Email and Type are required" });
-        }
-
-        // by default base_price_up is 0.20 if not provided
-        if (!base_price_up) {
-            logger.warn(`[createInvite] base_price_up not provided, defaulting to 0.20`);
-        }
-
+    private async createInvite(req: Request, res: Response): Promise<Response> {
         try {
-            const result = await this.inviteService.createInvite({ email, type, super_admin_id: super_admin_id!, base_price_up });
+            // TODO: Replace with req.user?.id once auth middleware is implemented
+            const super_admin_id = 1;
+
+            const { email, type, base_price_up } = req.body;
+
+            if (!email || !type) {
+                return res.status(400).json({ message: "Email and Type are required" });
+            }
+
+            const validation = validateInvitationTypeInputs(type, req.body);
+            if (!validation.success) {
+                return res.status(400).json({ message: validation.message });
+            }
+
+            // Default base_price_up
+            const finalBasePriceUp = base_price_up ?? 0.0;
+            if (base_price_up === undefined) {
+                logger.warn(`[InviteController.createInvite] base_price_up not provided, defaulting to ${finalBasePriceUp}`);
+            }
+
+            let result;
+            switch (type) {
+                case "COMPANY_OWNER":
+                    result = await this.handleCompanyOwnerInvite({ email, type, super_admin_id, base_price_up: finalBasePriceUp });
+                    break;
+
+                // If you want to add other invite types later (PLATFORM, COMPANY_MEMBER, etc.)
+                default:
+                    return res.status(400).json({ message: `Unsupported invite type: ${type}` });
+            }
+
             if (result.success) {
                 return res.status(201).json(result.data);
-            } else {
-                return res.status(500).json({ message: result.details || "Failed to create invitation" });
             }
+
+            return res.status(500).json({ message: result.details || "Failed to create invitation" });
+
         } catch (error: any) {
-            logger.error(`[UserController.createInvite] Error creating invite: ${error.message} | Stack Trace: ${error.stack}`);
+            logger.error(`[InviteController.createInvite] Error: ${error.message} | Stack: ${error.stack}`);
             return res.status(500).json({ message: "Internal Server Error" });
         }
     }
 
-    // async getAllInvites(req: Request, res: Response) {
-    //     const super_admin_id = req.user?.id;
-    //     try {
-    //         const result = await this.inviteService.getAllInvites(super_admin_id!);
-    //         if (result.success) {
-    //             return res.status(200).json(result.data);
-    //         } else {
-    //             return res.status(500).json({ message: result.details || "Failed to fetch invitations" });
-    //         }
-    //     } catch (error: any) {
-    //         logger.error(`[UserController.getAllInvites] Error fetching invites: ${error.message} | Stack Trace: ${error.stack}`);
-    //         return res.status(500).json({ message: "Internal Server Error" });
-    //     }
-    // }
-
-    public getRouter() {
-        return this.router;
+    private async handleCompanyOwnerInvite(params: {
+        email: string;
+        type: string;
+        super_admin_id: number;
+        base_price_up: number;
+    }) {
+        try {
+            return await this.inviteService.createCompanyOwnerInvite(params);
+        } catch (error: any) {
+            logger.error(`[InviteController.handleCompanyOwnerInvite] Error: ${error.message} | Stack: ${error.stack}`);
+            return { success: false, details: "Failed to create company owner invitation" };
+        }
     }
 
-};
+    public getRouter(): Router {
+        return this.router;
+    }
+}
 
 export default InviteController;
