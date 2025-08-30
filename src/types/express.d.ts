@@ -6,4 +6,4 @@ declare global {
       user?: any; // Adjust 'any' to your user type if available
     }
   }
-}
+} 
